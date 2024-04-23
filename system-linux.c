@@ -1443,6 +1443,18 @@ int system_bridge_addbr(struct device *bridge, struct bridge_config *cfg)
 	if (cfg->flags & BRIDGE_OPT_AGEING_TIME)
 		nla_put_u32(msg, IFLA_BR_AGEING_TIME, sec_to_jiffies(cfg->ageing_time));
 
+	nla_put_string(msg, IFLA_BR_BRIDGE_ID, cfg->bridge_id);
+	nla_put_string(msg, IFLA_BR_GROUP_ADDR, cfg->group_addr);
+	nla_put_u16(msg, IFLA_BR_GROUP_FWD_MASK, cfg->group_fwd_mask);
+	nla_put_string(msg, IFLA_BR_ROOT_ID, cfg->root_id); // 2 bytes + 6 bytes
+	nla_put_u32(msg, IFLA_BR_ROOT_PATH_COST, cfg->root_path_cost);
+	nla_put_u16(msg, IFLA_BR_ROOT_PORT, cfg->root_port);
+	nla_put_u32(msg, IFLA_BR_STP_STATE, cfg->stp_state);
+	nla_put_u64(msg, IFLA_BR_TCN_TIMER, cfg->tcn_timer);
+	nla_put_u8(msg, IFLA_BR_TOPOLOGY_CHANGE, cfg->topology_change);
+	nla_put_u8(msg, IFLA_BR_TOPOLOGY_CHANGE_DETECTED, cfg->topology_change_detected);
+	nla_put_u64(msg, IFLA_BR_TOPOLOGY_CHANGE_TIMER, cfg->topology_change_timer);
+
 	nla_nest_end(msg, data);
 	nla_nest_end(msg, linkinfo);
 

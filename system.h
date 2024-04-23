@@ -139,6 +139,20 @@ struct bridge_config {
 	int hash_max;
 
 	bool vlan_filtering;
+
+	/* bridge default vars */
+	const char *bridge_id;
+	const char *group_addr;
+	unsigned short group_fwd_mask;
+	const char *root_id;
+	unsigned int root_path_cost;
+	unsigned int root_port;
+	unsigned long stp_state;
+	unsigned long long tcn_timer;
+	unsigned short topology_change;
+	unsigned short topology_change_detected;
+	unsigned long long topology_change_timer;
+
 };
 
 enum macvlan_opt {
