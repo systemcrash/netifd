@@ -43,6 +43,17 @@ enum {
 	BRIDGE_ATTR_HAS_VLANS,
 	BRIDGE_ATTR_STP_KERNEL,
 	BRIDGE_ATTR_STP_PROTO,
+	BRIDGE_ATTR_BRIDGE_ID,
+	BRIDGE_ATTR_GROUP_ADDR,
+	BRIDGE_ATTR_GROUP_FWD_MASK,
+	BRIDGE_ATTR_ROOT_ID,
+	BRIDGE_ATTR_ROOT_PATH_COST,
+	BRIDGE_ATTR_ROOT_PORT,
+	BRIDGE_ATTR_STP_STATE,
+	BRIDGE_ATTR_TCN_TIMER,
+	BRIDGE_ATTR_TOPOLOGY_CHANGE,
+	BRIDGE_ATTR_TOPOLOGY_CHANGE_DETECTED,
+	BRIDGE_ATTR_TOPOLOGY_CHANGE_TIMER,
 	__BRIDGE_ATTR_MAX
 };
 
@@ -66,6 +77,17 @@ static const struct blobmsg_policy bridge_attrs[__BRIDGE_ATTR_MAX] = {
 	[BRIDGE_ATTR_HAS_VLANS] = { "__has_vlans", BLOBMSG_TYPE_BOOL }, /* internal */
 	[BRIDGE_ATTR_STP_KERNEL] = { "stp_kernel", BLOBMSG_TYPE_BOOL },
 	[BRIDGE_ATTR_STP_PROTO] = { "stp_proto", BLOBMSG_TYPE_STRING },
+	[BRIDGE_ATTR_BRIDGE_ID] = { "bridge_id", BLOBMSG_TYPE_STRING },
+	[BRIDGE_ATTR_GROUP_ADDR] = { "group_addr", BLOBMSG_TYPE_STRING }, /* MAC address */
+	[BRIDGE_ATTR_GROUP_FWD_MASK] = { "group_fwd_mask", BLOBMSG_TYPE_INT16 },
+	[BRIDGE_ATTR_ROOT_ID] = { "root_id", BLOBMSG_TYPE_STRING },
+	[BRIDGE_ATTR_ROOT_PATH_COST] = { "root_path_cost", BLOBMSG_TYPE_INT32 },
+	[BRIDGE_ATTR_ROOT_PORT] = { "root_port", BLOBMSG_TYPE_INT16 },
+	[BRIDGE_ATTR_STP_STATE] = { "stp_state", BLOBMSG_TYPE_INT32 },
+	[BRIDGE_ATTR_TCN_TIMER] = { "tcn_timer", BLOBMSG_TYPE_INT64 },
+	[BRIDGE_ATTR_TOPOLOGY_CHANGE] = { "topology_change", BLOBMSG_TYPE_INT16 },
+	[BRIDGE_ATTR_TOPOLOGY_CHANGE_DETECTED] = { "topology_change_detected", BLOBMSG_TYPE_INT16 },
+	[BRIDGE_ATTR_TOPOLOGY_CHANGE_TIMER] = { "topology_change_timer", BLOBMSG_TYPE_INT64 },
 };
 
 static const struct uci_blob_param_info bridge_attr_info[__BRIDGE_ATTR_MAX] = {
@@ -1116,6 +1138,18 @@ bridge_dump_info(struct device *dev, struct blob_buf *b)
 	if (cfg->stp_proto)
 		blobmsg_add_string(b, "stp_proto", cfg->stp_proto);
 
+	blobmsg_add_string(b,  "bridge_id", cfg->bridge_id);
+	blobmsg_add_string(b,  "group_addr", cfg->group_addr); /* MAC address */
+	blobmsg_add_u16(b,  "group_fwd_mask", cfg->group_fwd_mask);
+	blobmsg_add_string(b,  "root_id", cfg->root_id);
+	blobmsg_add_u32(b,  "root_path_cost", cfg->root_path_cost);
+	blobmsg_add_u16(b,  "root_port", cfg->root_port);
+	blobmsg_add_u32(b,  "stp_state", cfg->stp_state);
+	blobmsg_add_u64(b,  "tcn_timer", cfg->tcn_timer);
+	blobmsg_add_u16(b,  "topology_change", cfg->topology_change);
+	blobmsg_add_u16(b,  "topology_change_detected", cfg->topology_change_detected);
+	blobmsg_add_u64(b,  "topology_change_timer", cfg->topology_change_timer);
+
 	blobmsg_close_table(b, c);
 
 	if (avl_is_empty(&dev->vlans.avl))
@@ -1186,6 +1220,19 @@ bridge_apply_settings(struct bridge_state *bst, struct blob_attr **tb)
 	cfg->max_age = 10;
 	cfg->hello_time = 1;
 
+	/* bridge default vars */
+	cfg->bridge_id = 0;
+	cfg->group_addr = "";
+	cfg->group_fwd_mask = 0x0;
+	cfg->root_id = 0;
+	cfg->root_path_cost = 0;
+	cfg->root_port = 0;
+	cfg->stp_state = 0;
+	cfg->tcn_timer = 0;
+	cfg->topology_change = 0;
+	cfg->topology_change_detected = 0;
+	cfg->topology_change_timer = 0;
+
 	if ((cur = tb[BRIDGE_ATTR_STP]))
 		cfg->stp = blobmsg_get_bool(cur);
 
@@ -1246,6 +1293,40 @@ bridge_apply_settings(struct bridge_state *bst, struct blob_attr **tb)
 
 	if ((cur = tb[BRIDGE_ATTR_VLAN_FILTERING]))
 		cfg->vlan_filtering = blobmsg_get_bool(cur);
+
+	if ((cur = tb[BRIDGE_ATTR_BRIDGE_ID]))
+		cfg->bridge_id = blobmsg_get_string(cur);
+
+	if ((cur = tb[BRIDGE_ATTR_GROUP_ADDR]))
+		cfg->group_addr = blobmsg_get_string(cur);
+
+	if ((cur = tb[BRIDGE_ATTR_GROUP_FWD_MASK]))
+		cfg->group_fwd_mask = blobmsg_get_u16(cur);
+
+	if ((cur = tb[BRIDGE_ATTR_ROOT_ID]))
+		cfg->root_id = blobmsg_get_string(cur);
+
+	if ((cur = tb[BRIDGE_ATTR_ROOT_PATH_COST]))
+		cfg->root_path_cost = blobmsg_get_u32(cur);
+
+	if ((cur = tb[BRIDGE_ATTR_ROOT_PORT]))
+		cfg->root_port = blobmsg_get_u16(cur);
+
+	if ((cur = tb[BRIDGE_ATTR_STP_STATE]))
+		cfg->stp_state = blobmsg_get_u32(cur);
+
+	if ((cur = tb[BRIDGE_ATTR_TCN_TIMER]))
+		cfg->tcn_timer = blobmsg_get_u64(cur);
+
+	if ((cur = tb[BRIDGE_ATTR_TOPOLOGY_CHANGE]))
+		cfg->topology_change = blobmsg_get_u16(cur);
+
+	if ((cur = tb[BRIDGE_ATTR_TOPOLOGY_CHANGE_DETECTED]))
+		cfg->topology_change_detected = blobmsg_get_u16(cur);
+
+	if ((cur = tb[BRIDGE_ATTR_TOPOLOGY_CHANGE_TIMER]))
+		cfg->topology_change_timer = blobmsg_get_u64(cur);
+
 }
 
 static enum dev_change_type
