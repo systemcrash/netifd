@@ -4471,6 +4471,140 @@ failure:
 	return ret;
 }
 
+static int system_add_ipip_tunnel(const char *name, uint8_t proto,
+								  const unsigned int link, struct blob_attr **tb)
+{
+	struct nl_msg *nlm = nlmsg_alloc_simple(RTM_NEWLINK,
+				NLM_F_REQUEST | NLM_F_REPLACE | NLM_F_CREATE);
+	struct ifinfomsg ifi = { .ifi_family = AF_UNSPEC };
+	struct blob_attr *cur;
+	int ret = 0, ttl = 0;
+	uint32_t encap_flags = 0;
+	bool set_df = true;
+
+	if (!nlm)
+		return -1;
+
+	nlmsg_append(nlm, &ifi, sizeof(ifi), 0);
+	nla_put_string(nlm, IFLA_IFNAME, name);
+
+	if (link)
+		nla_put_u32(nlm, IFLA_LINK, link);
+
+	struct nlattr *linkinfo = nla_nest_start(nlm, IFLA_LINKINFO);
+	if (!linkinfo) {
+		ret = -ENOMEM;
+		goto failure;
+	}
+
+	nla_put_string(nlm, IFLA_INFO_KIND, "ipip");
+	struct nlattr *infodata = nla_nest_start(nlm, IFLA_INFO_DATA);
+	if (!infodata) {
+		ret = -ENOMEM;
+		goto failure;
+	}
+
+	if (link)
+		nla_put_u32(nlm, IFLA_IPTUN_LINK, link);
+
+	if ((cur = tb[TUNNEL_ATTR_TTL]))
+		ttl = blobmsg_get_u32(cur);
+
+	nla_put_u8(nlm, IFLA_IPTUN_PROTO, proto);
+	nla_put_u8(nlm, IFLA_IPTUN_TTL, (ttl) ? ttl : 64);
+
+	if ((cur = tb[TUNNEL_ATTR_DF]))
+		set_df = blobmsg_get_bool(cur);
+
+	nla_put_u8(nlm, IFLA_IPTUN_PMTUDISC, !!(set_df & htons(IP_DF)));
+
+	if ((cur = tb[TUNNEL_ATTR_TOS])) {
+		char *str = blobmsg_get_string(cur);
+		if (strcmp(str, "inherit")) {
+			unsigned uval;
+
+			if (!system_tos_aton(str, &uval))
+				return -EINVAL;
+
+			nla_put_u8(nlm, IFLA_IPTUN_TOS, uval);
+		} else
+			nla_put_u8(nlm, IFLA_IPTUN_TOS, 1);
+	}
+
+	struct in_addr in4buf;
+	if ((cur = tb[TUNNEL_ATTR_LOCAL])) {
+		if (inet_pton(AF_INET, blobmsg_data(cur), &in4buf) < 1) {
+			ret = -EINVAL;
+			goto failure;
+		}
+		nla_put(nlm, IFLA_IPTUN_LOCAL, sizeof(in4buf), &in4buf);
+	}
+
+	if ((cur = tb[TUNNEL_ATTR_REMOTE])) {
+		if (inet_pton(AF_INET, blobmsg_data(cur), &in4buf) < 1) {
+			ret = -EINVAL;
+			goto failure;
+		}
+		nla_put(nlm, IFLA_IPTUN_REMOTE, sizeof(in4buf), &in4buf);
+	}
+
+	// --- Encapsulation extensions ---
+	if ((cur = tb[TUNNEL_ATTR_ENCAP_TYPE])) {
+		const char *str = blobmsg_get_string(cur);
+
+		if (!strcmp(str, "gue"))
+			nla_put_u16(nlm, IFLA_IPTUN_ENCAP_TYPE, TUNNEL_ENCAP_GUE);
+		else if (!strcmp(str, "fou"))
+			nla_put_u16(nlm, IFLA_IPTUN_ENCAP_TYPE, TUNNEL_ENCAP_FOU);
+		else if (!strcmp(str, "none"))
+			nla_put_u16(nlm, IFLA_IPTUN_ENCAP_TYPE, TUNNEL_ENCAP_NONE);
+		else
+			return -EINVAL;
+	}
+
+	if ((cur = tb[TUNNEL_ATTR_ENCAP_SPORT])) {
+		const char *val = blobmsg_get_string(cur);
+		if (!strcmp(val, "auto"))
+			nla_put_u16(nlm, IFLA_IPTUN_ENCAP_SPORT, 0);
+		else
+			nla_put_u16(nlm, IFLA_IPTUN_ENCAP_SPORT, htons(atoi(val)));
+	}
+
+	if ((cur = tb[TUNNEL_ATTR_ENCAP_DPORT])) {
+		nla_put_u16(nlm, IFLA_IPTUN_ENCAP_DPORT, htons(blobmsg_get_u32(cur)));
+	}
+
+	if ((cur = tb[TUNNEL_ATTR_ENCAP_CSUM])) {
+		if (blobmsg_get_bool(cur))
+			encap_flags |= TUNNEL_ENCAP_FLAG_CSUM;
+	}
+
+	// IPv6 Checksum
+	// if ((cur = tb[TUNNEL_ATTR_ENCAP_CSUM6])) {
+	// 	if (blobmsg_get_bool(cur))
+	// 		encap_flags |= TUNNEL_ENCAP_FLAG_CSUM6;
+	// }
+
+	if ((cur = tb[TUNNEL_ATTR_ENCAP_REMCSUM])) {
+		if (blobmsg_get_bool(cur))
+			encap_flags |= TUNNEL_ENCAP_FLAG_REMCSUM;
+	}
+
+	if (encap_flags)
+		nla_put_u16(nlm, IFLA_IPTUN_ENCAP_FLAGS, encap_flags);
+	// --- End Encapsulation ---
+
+	nla_nest_end(nlm, infodata);
+	nla_nest_end(nlm, linkinfo);
+
+	return system_rtnl_call(nlm);
+
+failure:
+	nlmsg_free(nlm);
+	return ret;
+}
+
+
 static int system_add_proto_tunnel(const char *name, const uint8_t proto, const unsigned int link, struct blob_attr **tb)
 {
 	struct blob_attr *cur;
@@ -4624,7 +4758,8 @@ int system_add_ip_tunnel(const struct device *dev, struct blob_attr *attr)
 #endif
 #endif
 	} else if (!strcmp(str, "ipip")) {
-		return system_add_proto_tunnel(dev->ifname, IPPROTO_IPIP, link, tb);
+		// return system_add_proto_tunnel(dev->ifname, IPPROTO_IPIP, link, tb);
+		return system_add_ipip_tunnel(dev->ifname, IPPROTO_IPIP, link, tb);
 	}
 	else
 		return -EINVAL;
